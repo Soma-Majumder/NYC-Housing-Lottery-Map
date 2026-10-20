@@ -1,0 +1,258 @@
+<title>NYC Housing Lottery Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: map-first civic atlas. Map fills the left; a ruled sidebar holds filters, counts and the selected building. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --fg:#17202b; --muted:#5b6776; --line:#d5dbe2;
+  --water:#dfe6ee; --land:#fbfcfd; --landline:#b8c2cd;
+  --accent:#1f4e8c;
+  --s-open:#0b7a55; --s-review:#c27a07; --s-filled:#5f6f84; --s-closed:#a9b3bf;
+  --sel:#d6336c;
+  --b0:#f9d5e0; --b1:#d4e8f9; --b2:#dbf0d6; --b3:#fbe9c7; --b4:#e6dcf5;
+  --display:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --surface:#161d26; --fg:#e6ebf1; --muted:#97a3b2; --line:#2a3440;
+  --water:#0c1218; --land:#1c2530; --landline:#3a4757;
+  --accent:#7fb0f0;
+  --s-open:#3ccf91; --s-review:#f0b43c; --s-filled:#8c9bb0; --s-closed:#4d5968;
+  --sel:#ff6b9a; --b0:#4a3340; --b1:#2d3f52; --b2:#304535; --b3:#4a4130; --b4:#3c3450; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#161d26; --fg:#e6ebf1; --muted:#97a3b2; --line:#2a3440;
+  --water:#0c1218; --land:#1c2530; --landline:#3a4757;
+  --accent:#7fb0f0;
+  --s-open:#3ccf91; --s-review:#f0b43c; --s-filled:#8c9bb0; --s-closed:#4d5968;
+  --sel:#ff6b9a; --b0:#4a3340; --b1:#2d3f52; --b2:#304535; --b3:#4a4130; --b4:#3c3450; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.45}
+.wrap{max-width:1360px;margin:0 auto;padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:16px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(24px,3.4vw,34px);letter-spacing:-.02em;line-height:1.05;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.totals{display:flex;gap:22px;flex-wrap:wrap}
+.tot b{display:block;font-family:var(--mono);font-weight:500;font-size:22px;font-variant-numeric:tabular-nums}
+.tot span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.mapbox{position:relative;background:var(--water);border:1px solid var(--line);border-radius:10px;overflow:hidden;aspect-ratio:1/1.02;max-height:calc(100vh - 140px);min-height:360px;width:100%;touch-action:none}
+svg#map{width:100%;height:100%;display:block;cursor:grab}
+svg#map.drag{cursor:grabbing}
+.boro{fill:var(--land);stroke:var(--landline);}
+.boro.b0{fill:var(--b0)} .boro.b1{fill:var(--b1)} .boro.b2{fill:var(--b2)} .boro.b3{fill:var(--b3)} .boro.b4{fill:var(--b4)}
+.boro{stroke-width:.6;vector-effect:non-scaling-stroke}
+.blabel{font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.14em;fill:var(--fg);opacity:.5;text-transform:uppercase;pointer-events:none}
+.pin{stroke:var(--land);stroke-width:.8;vector-effect:non-scaling-stroke;cursor:pointer}
+.pin.s0{fill:var(--s-open)} .pin.s1{fill:var(--s-review)} .pin.s2{fill:var(--s-filled)} .pin.s3,.pin.s9{fill:var(--s-closed)}
+.pin.on{stroke:var(--sel);stroke-width:2.4}
+.ring{fill:none;stroke:var(--s-open);stroke-width:1.4;vector-effect:non-scaling-stroke;pointer-events:none;opacity:.55}
+.zoom{position:absolute;right:calc(10px + env(safe-area-inset-right,0px));top:10px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 18px/1 var(--body);cursor:pointer}
+.zoom button:focus-visible,.chip:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;max-width:240px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.legend{position:absolute;left:10px;bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;display:grid;gap:3px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+aside{display:grid;gap:14px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.panel h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:999px;padding:5px 10px;font:500 12.5px var(--body);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--surface);border-color:var(--fg)}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+input[type=search]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:14px var(--body)}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:5px 0;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+td:first-child,th:first-child{text-align:left}
+th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.num{font-family:var(--mono)}
+.detail .name{font-size:17px;font-weight:800;letter-spacing:-.01em;margin:0 0 2px;text-wrap:balance}
+.detail .addr{color:var(--muted);margin:0 0 10px}
+.status{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;color:#fff}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:12px 0;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.ami{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--line);margin:6px 0 4px}
+.ami span{height:100%}
+.amil{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;color:var(--muted)}
+.amil i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.empty{color:var(--muted);margin:0}
+.others{margin-top:10px;font-size:12.5px;color:var(--muted)}
+a{color:var(--accent)}
+.tot.btn{cursor:pointer;border:1px solid var(--s-open);border-radius:8px;padding:4px 10px;background:transparent;color:inherit;font:inherit;text-align:left}
+.tot.btn[aria-expanded="true"]{background:color-mix(in srgb,var(--s-open) 14%,transparent)}
+.olist{list-style:none;margin:0;padding:0;display:grid;gap:0;max-height:420px;overflow:auto}
+.olist li{border-bottom:1px solid var(--line)}
+.olist button{all:unset;display:block;width:100%;box-sizing:border-box;padding:9px 2px;cursor:pointer}
+.olist button:hover .on,.olist button:focus-visible .on{text-decoration:underline}
+.olist button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.olist .on{font-weight:600;display:block}
+.olist .om{font-size:12px;color:var(--muted);display:block}
+.olist .dl{color:var(--s-open);font-weight:600}
+.steps{margin:6px 0 0;padding-left:20px;display:grid;gap:6px;font-size:13px}
+.steps li::marker{font-weight:700;color:var(--s-open)}
+.note{font-size:12px;color:var(--muted);margin:10px 0 0}
+.panel.open{border-color:var(--s-open)}
+.foot{color:var(--muted);font-size:12px;margin-top:14px;max-width:90ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div>
+    <h1>NYC Housing Lottery Map</h1>
+    <p class="sub">Every building advertised in an affordable housing lottery on NYC Housing Connect since July 2020, across all five boroughs. Click a pin to see the lottery, its deadline and who it was for.</p>
+  </div>
+  <div class="totals" id="totals"></div>
+</header>
+
+<div class="grid">
+  <div class="mapbox" id="mapbox">
+    <svg id="map" viewBox="0 0 440 450" role="img" aria-label="Map of New York City with housing lottery buildings"></svg>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zreset" aria-label="Reset view" style="font-size:13px">⟲</button></div>
+    <div class="legend" id="legend"></div>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <aside>
+    <section class="panel open" id="openpanel" hidden>
+      <h2 id="openhead">Open for applications now</h2>
+      <ul class="olist" id="olist"></ul>
+      <h2 style="margin-top:16px">How to apply</h2>
+      <ol class="steps">
+        <li><b>Make a free account</b> on <a href="https://housingconnect.nyc.gov/PublicWeb/" target="_blank" rel="noopener">NYC Housing Connect</a>.</li>
+        <li><b>Fill in your household profile:</b> everyone who will live with you and all household income.</li>
+        <li><b>Check the listing</b> for that building's income limits and household sizes. Each lottery has its own.</li>
+        <li><b>Apply online before the deadline.</b> One application per household per lottery. Applying is always free.</li>
+        <li><b>Wait to be contacted.</b> If your application is picked, the building will ask for documents like pay stubs, tax returns and ID.</li>
+      </ol>
+      <p class="note">Never pay anyone to apply or to get a better spot. Free help filling out applications is available through HPD's Housing Ambassadors program. Deadlines shown come from HPD's dataset; confirm on Housing Connect.</p>
+    </section>
+    <section class="panel detail" id="detail">
+      <h2>Selected building</h2>
+      <p class="empty">Click any pin on the map. Green pins are lotteries open for applications right now.</p>
+    </section>
+    <section class="panel">
+      <h2>Filter</h2>
+      <div class="chips" id="fstatus"></div>
+      <div class="row chips" id="fboro"></div>
+      <label class="check"><input type="checkbox" id="fsenior"> Senior housing only (62+)</label>
+      <div class="row"><input type="search" id="q" placeholder="Search a name, street or ZIP-free address"></div>
+    </section>
+    <section class="panel">
+      <h2>By borough · shown on map</h2>
+      <table id="btable"></table>
+    </section>
+  </aside>
+</div>
+<p class="foot">Source: NYC Open Data, HPD “Advertised Lotteries on Housing Connect” by Building (nibs-na6y) and by Lottery (vy5i-a666), pulled October 19, 2026. Excludes re-rental “mini lotteries” and Mitchell-Lama waiting lists. Status is HPD’s lottery status; to apply, go to housingconnect.nyc.gov. Income bands are units by Area Median Income (AMI) tier.</p>
+</div>
+
+<script>
+const BORO_PATHS=__BOROS__;
+const L=__L__;
+const B=__B__;
+const BN=["Manhattan","Bronx","Brooklyn","Queens","Staten Island"];
+const ST=[{k:0,label:"Accepting applications",v:"--s-open"},{k:1,label:"Reviewing applicants",v:"--s-review"},{k:2,label:"All units filled",v:"--s-filled"},{k:3,label:"Closed",v:"--s-closed"}];
+const AMI=["Extremely low","Very low","Low","Moderate","Middle","Above middle"];
+const AMIC=["#5a2a82","#8a3f9e","#c0569c","#e27c7c","#f2a65a","#f6d38a"];
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmtDate=s=>{if(!s)return"—";const y=2000+ +s.slice(0,2),m=+s.slice(2,4),d=+s.slice(4,6);return new Date(y,m-1,d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})};
+const tc=s=>s.replace(/\w\S*/g,w=>/\d/.test(w)?w.toUpperCase():w[0].toUpperCase()+w.slice(1).toLowerCase());
+
+// lotteries: [name,status,end,flags,ami]
+const lots=L.map(r=>{const [n,s,e,f,a]=r.split("|");return{name:n.replace(/\s+/g," ").trim(),s:+s,end:e,pres:!!(+f&1),senior:!!(+f&2),ami:a.split(".").map(Number),bldgs:[]}});
+const pins=B.map((r,i)=>{const p={i,x:r[0],y:r[1],lot:lots[r[2]],boro:r[3],units:r[4],addr:tc(r[5])};p.lot.bldgs.push(p);return p});
+
+const state={status:new Set([0,1,2,3]),boro:new Set([0,1,2,3,4]),senior:false,q:"",sel:null};
+try{const s=JSON.parse(localStorage.getItem("lotmap")||"null");if(s){state.status=new Set(s.status);state.boro=new Set(s.boro);state.senior=s.senior}}catch(e){}
+const save=()=>{try{localStorage.setItem("lotmap",JSON.stringify({status:[...state.status],boro:[...state.boro],senior:state.senior}))}catch(e){}};
+
+const svg=document.getElementById("map"),NS="http://www.w3.org/2000/svg";
+const gRoot=document.createElementNS(NS,"g");svg.appendChild(gRoot);
+const LBL={Manhattan:[150,190],Bronx:[250,95],Brooklyn:[210,330],Queens:[330,250],"Staten Island":[60,380]};
+for(const [n,d] of Object.entries(BORO_PATHS)){const p=document.createElementNS(NS,"path");p.setAttribute("d",d);p.setAttribute("class","boro b"+BN.indexOf(n));p.setAttribute("fill-rule","evenodd");gRoot.appendChild(p)}
+const gLbl=document.createElementNS(NS,"g");gRoot.appendChild(gLbl);
+for(const [n,[x,y]] of Object.entries(LBL)){const t=document.createElementNS(NS,"text");t.setAttribute("x",x);t.setAttribute("y",y);t.setAttribute("class","blabel");t.setAttribute("text-anchor","middle");t.textContent=n;gLbl.appendChild(t)}
+const gPins=document.createElementNS(NS,"g");gRoot.appendChild(gPins);
+const gTop=document.createElementNS(NS,"g");gRoot.appendChild(gTop);
+
+let view={x:0,y:0,w:440,h:450};
+const setView=()=>{svg.setAttribute("viewBox",`${view.x} ${view.y} ${view.w} ${view.h}`);const k=440/view.w;const r=Math.max(.6,2.1/Math.sqrt(k));pins.forEach(p=>{if(p.el){p.el.setAttribute("r",p.lot.s===0?r*1.5:r)}});gTop.querySelectorAll(".ring").forEach(c=>c.setAttribute("r",r*3.2));gLbl.style.fontSize=(11/Math.sqrt(k))+"px"};
+
+// draw pins: closed first so open ones sit on top
+const order=[...pins].sort((a,b)=>(b.lot.s===9?3:b.lot.s)-(a.lot.s===9?3:a.lot.s));
+order.forEach(p=>{const c=document.createElementNS(NS,"circle");c.setAttribute("cx",p.x);c.setAttribute("cy",p.y);c.setAttribute("class","pin s"+p.lot.s);c.dataset.i=p.i;p.el=c;gPins.appendChild(c)});
+
+function visible(p){const l=p.lot;if(!state.status.has(l.s===9?3:l.s))return false;if(!state.boro.has(p.boro))return false;if(state.senior&&!l.senior)return false;if(state.q){const q=state.q;if(!l.name.toLowerCase().includes(q)&&!p.addr.toLowerCase().includes(q))return false}return true}
+
+function render(){
+  gTop.innerHTML="";
+  const counts=BN.map(()=>({b:0,u:0,open:0}));
+  let nb=0,nu=0,no=0;const seenLot=new Set();
+  pins.forEach(p=>{const v=visible(p);p.el.style.display=v?"":"none";if(v){nb++;nu+=p.units;counts[p.boro].b++;counts[p.boro].u+=p.units;if(p.lot.s===0){counts[p.boro].open++;no++;const r=document.createElementNS(NS,"circle");r.setAttribute("cx",p.x);r.setAttribute("cy",p.y);r.setAttribute("class","ring");gTop.appendChild(r)}seenLot.add(p.lot)}});
+  document.getElementById("totals").innerHTML=`<div class="tot"><b>${nb.toLocaleString()}</b><span>Buildings</span></div><div class="tot"><b>${nu.toLocaleString()}</b><span>Units</span></div><div class="tot"><b>${seenLot.size.toLocaleString()}</b><span>Lotteries</span></div><button class="tot btn" id="openbtn" type="button" aria-expanded="${!document.getElementById("openpanel").hidden}" aria-controls="openpanel"><b style="color:var(--s-open)">${no}</b><span>Open now · see list</span></button>`;
+  document.getElementById("openbtn").onclick=toggleOpen;
+  buildOpenList();
+  document.getElementById("btable").innerHTML=`<tr><th>Borough</th><th>Buildings</th><th>Units</th><th>Open</th></tr>`+BN.map((n,i)=>`<tr><td>${n}</td><td class="num">${counts[i].b.toLocaleString()}</td><td class="num">${counts[i].u.toLocaleString()}</td><td class="num" style="color:var(--s-open)">${counts[i].open}</td></tr>`).join("");
+  pins.forEach(p=>p.el.classList.toggle("on",state.sel&&p.lot===state.sel.lot));
+  setView();
+}
+
+function chip(label,on,dot,fn){const b=document.createElement("button");b.className="chip";b.type="button";b.setAttribute("aria-pressed",on);b.innerHTML=(dot?`<i style="background:var(${dot})"></i>`:"")+label;b.onclick=()=>{fn();b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")!=="true");save();render()};return b}
+const fs=document.getElementById("fstatus");ST.forEach(s=>fs.appendChild(chip(s.label,state.status.has(s.k),s.v,()=>state.status.has(s.k)?state.status.delete(s.k):state.status.add(s.k))));
+const fb=document.getElementById("fboro");BN.forEach((n,i)=>fb.appendChild(chip(n,state.boro.has(i),null,()=>state.boro.has(i)?state.boro.delete(i):state.boro.add(i))));
+const sen=document.getElementById("fsenior");sen.checked=state.senior;sen.onchange=()=>{state.senior=sen.checked;save();render()};
+document.getElementById("q").oninput=e=>{state.q=e.target.value.trim().toLowerCase();render()};
+document.getElementById("legend").innerHTML=ST.map(s=>`<div><i style="background:var(${s.v})"></i>${s.label}</div>`).join("");
+
+function toggleOpen(force){const pn=document.getElementById("openpanel");pn.hidden=typeof force==="boolean"?!force:!pn.hidden;const b=document.getElementById("openbtn");if(b)b.setAttribute("aria-expanded",!pn.hidden);if(!pn.hidden)pn.scrollIntoView({behavior:"smooth",block:"nearest"})}
+function buildOpenList(){
+  const seen=new Map();pins.forEach(p=>{if(p.lot.s===0&&state.boro.has(p.boro)&&(!state.senior||p.lot.senior)){if(!seen.has(p.lot))seen.set(p.lot,p)}});
+  const items=[...seen.entries()].sort((a,b)=>a[0].end.localeCompare(b[0].end));
+  document.getElementById("openhead").textContent=`Open for applications now · ${items.length}`;
+  document.getElementById("olist").innerHTML=items.map(([l,p])=>{const u=l.bldgs.reduce((a,b)=>a+b.units,0);const tiers=l.ami.map((v,i)=>v?AMI[i]:null).filter(Boolean).join(", ");return `<li><button type="button" data-i="${p.i}"><span class="on">${l.name}</span><span class="om">${BN[p.boro]} · ${u} units · <span class="dl">apply by ${fmtDate(l.end)}</span>${tiers?` · ${tiers} income`:""}${l.senior?" · seniors 62+":""}</span></button></li>`}).join("")||`<li><p class="empty" style="padding:8px 0">No open lotteries match your filters.</p></li>`;
+  document.querySelectorAll("#olist button").forEach(b=>b.onclick=()=>{const p=pins[b.dataset.i];flyTo(p);showDetail(p);document.getElementById("detail").scrollIntoView({behavior:"smooth",block:"nearest"})});
+}
+function flyTo(p){const w=60;view={x:p.x-w/2,y:p.y-w*450/440/2,w,h:w*450/440};setView()}
+function showDetail(p){
+  state.sel=p;const l=p.lot,s=ST[l.s===9?3:l.s];
+  const tot=l.ami.reduce((a,b)=>a+b,0);
+  const bar=tot?l.ami.map((v,i)=>v?`<span style="width:${v/tot*100}%;background:${AMIC[i]}" title="${AMI[i]}: ${v}"></span>`:"").join(""):"";
+  const leg=l.ami.map((v,i)=>v?`<span><i style="background:${AMIC[i]}"></i>${AMI[i]} ${v}</span>`:"").join("");
+  const others=l.bldgs.length>1?`<p class="others">Part of a ${l.bldgs.length}-building lottery: ${l.bldgs.slice(0,6).map(b=>b.addr).join(", ")}${l.bldgs.length>6?"…":""}</p>`:"";
+  document.getElementById("detail").innerHTML=`<h2>Selected building</h2><p class="name">${l.name}</p><p class="addr">${p.addr}, ${BN[p.boro]}</p><span class="status" style="background:var(${s.v})">${s.label}</span>
+  <dl class="kv"><dt>Units in this building</dt><dd class="num">${p.units}</dd><dt>Application deadline</dt><dd>${fmtDate(l.end)}</dd><dt>Construction</dt><dd>${l.pres?"Preservation":"New construction"}</dd>${l.senior?`<dt>Set-aside</dt><dd>Seniors 62+</dd>`:""}</dl>
+  ${tot?`<h2 style="margin-top:4px">Units by income tier (whole lottery)</h2><div class="ami">${bar}</div><div class="amil">${leg}</div>`:""}${others}
+  ${l.s===0?`<p class="others">Open now. Apply at <a href="https://housingconnect.nyc.gov/PublicWeb/" target="_blank" rel="noopener">housingconnect.nyc.gov</a> before ${fmtDate(l.end)}. <a href="#openpanel" id="seeopen">See all open lotteries and how to apply</a></p>`:""}`;
+  const so=document.getElementById("seeopen");if(so)so.onclick=e=>{e.preventDefault();toggleOpen(true)};
+  render();
+}
+
+const tip=document.getElementById("tip"),box=document.getElementById("mapbox");
+gPins.addEventListener("pointermove",e=>{const i=e.target.dataset&&e.target.dataset.i;if(i==null){tip.hidden=true;return}const p=pins[i];tip.hidden=false;tip.innerHTML=`<b>${p.lot.name}</b><br>${p.addr} · ${p.units} units`;const r=box.getBoundingClientRect();let x=e.clientX-r.left+12,y=e.clientY-r.top+12;if(x>r.width-250)x-=260;tip.style.left=x+"px";tip.style.top=y+"px"});
+gPins.addEventListener("pointerleave",()=>tip.hidden=true);
+
+// pan & zoom
+const pt=(cx,cy)=>{const r=svg.getBoundingClientRect();const s=Math.max(view.w/r.width,view.h/r.height);const ox=(r.width*s-view.w)/2,oy=(r.height*s-view.h)/2;return{x:view.x-ox+(cx-r.left)*s,y:view.y-oy+(cy-r.top)*s,s}};
+function zoomAt(f,cx,cy){const a=pt(cx,cy);const nw=Math.min(440,Math.max(18,view.w*f));const k=nw/view.w;view.x=a.x-(a.x-view.x)*k;view.y=a.y-(a.y-view.y)*k;view.w=nw;view.h=nw*450/440;setView()}
+svg.addEventListener("wheel",e=>{e.preventDefault();zoomAt(e.deltaY>0?1.2:1/1.2,e.clientX,e.clientY)},{passive:false});
+const ptrs=new Map();let moved=false,pinch=0;
+svg.addEventListener("pointerdown",e=>{svg.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY,t:e.target});moved=false;svg.classList.add("drag")});
+svg.addEventListener("pointermove",e=>{if(!ptrs.has(e.pointerId))return;const prev=ptrs.get(e.pointerId);
+  if(ptrs.size===2){ptrs.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch)zoomAt(pinch/d,(a.x+b.x)/2,(a.y+b.y)/2);pinch=d;moved=true;return}
+  const dx=e.clientX-prev.x,dy=e.clientY-prev.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;const {s}=pt(0,0);view.x-=dx*s;view.y-=dy*s;ptrs.set(e.pointerId,{...prev,x:e.clientX,y:e.clientY});setView()});
+const up=e=>{const p=ptrs.get(e.pointerId);ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=0;svg.classList.remove("drag");if(p&&!moved&&p.t.dataset&&p.t.dataset.i!=null){const q=pins[p.t.dataset.i];showDetail(q);if(q.lot.s===0)toggleOpen(true)}};
+svg.addEventListener("pointerup",up);svg.addEventListener("pointercancel",up);
+const center=()=>{const r=svg.getBoundingClientRect();return[r.left+r.width/2,r.top+r.height/2]};
+document.getElementById("zin").onclick=()=>zoomAt(1/1.5,...center());
+document.getElementById("zout").onclick=()=>zoomAt(1.5,...center());
+document.getElementById("zreset").onclick=()=>{view={x:0,y:0,w:440,h:450};setView()};
+
+render();
+// open on a currently open lottery so the panel shows a real example
+const firstOpen=pins.filter(p=>p.lot.s===0).sort((a,b)=>b.units-a.units)[0];if(firstOpen)showDetail(firstOpen);toggleOpen(true);
+</script>
